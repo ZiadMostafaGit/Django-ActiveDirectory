@@ -10,16 +10,17 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
-# Hardcoded list of OUs in the "New" container
+# Production OUs available in eissa.local Active Directory
+# All OUs are under OU=New container: OU=New,DC=eissa,DC=local
 AVAILABLE_OUS = {
     'Accountant': ('OU=Accountant,OU=New', 'المحاسبة'),
-    'Administrative Affairs': ('OU=Administrative Affairs,OU=New', 'الشؤون الإدارية'),
+    'AdministrativeAffairs': ('OU=Administrative Affairs,OU=New', 'الشؤون الإدارية'),
     'Camera': ('OU=Camera,OU=New', 'الكاميرات'),
     'Exhibit': ('OU=Exhibit,OU=New', 'المعارض'),
     'HR': ('OU=HR,OU=New', 'الموارد البشرية'),
     'IT': ('OU=IT,OU=New', 'تكنولوجيا المعلومات'),
     'Audit': ('OU=Audit,OU=New', 'المراجعة'),
-    'Out Work': ('OU=Out Work,OU=New', 'العمل الخارجي'),
+    'OutWork': ('OU=Out Work,OU=New', 'العمل الخارجي'),
     'Projects': ('OU=Projects,OU=New', 'المشاريع'),
     'Sales': ('OU=Sales,OU=New', 'المبيعات'),
     'Supplies': ('OU=Supplies,OU=New', 'المشتريات'),

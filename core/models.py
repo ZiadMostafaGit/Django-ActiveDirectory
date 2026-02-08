@@ -49,6 +49,14 @@ class Employee(AbstractUser):
         help_text="Active Directory sAMAccountName (Windows login). Used to link to AD."
     )
     
+    # Override email field from AbstractUser - make it optional since it comes from AD
+    email = models.EmailField(
+        blank=True,
+        null=True,
+        default='',
+        help_text="Leave empty. Email comes from Active Directory."
+    )
+    
     # Database-only fields (editable)
     employee_id = models.CharField(
         max_length=50,

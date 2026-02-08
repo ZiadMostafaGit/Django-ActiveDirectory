@@ -56,7 +56,10 @@ class EmployeeAdmin(BaseUserAdmin):
     """Admin interface for Employee model."""
     
     fieldsets = (
-        (None, {'fields': ('username', 'password', 'sAMAccountName')}),
+        ('Database Link to AD', {
+            'fields': ('username', 'sAMAccountName'),
+            'description': 'sAMAccountName links this employee to their Active Directory account. Password and email are in AD.'
+        }),
         ('Personal Information (English)', {
             'fields': ('first_name_en', 'last_name_en'),
             'classes': ('wide',)
@@ -69,6 +72,11 @@ class EmployeeAdmin(BaseUserAdmin):
             'fields': ('employee_id', 'national_id', 'job_title', 'department', 'hire_date'),
             'classes': ('wide',)
         }),
+        ('Active Directory Info', {
+            'fields': ('current_ou_display', 'get_ad_email', 'get_ad_phone', 'get_ad_display_name'),
+            'classes': ('wide',),
+            'description': 'Real-time information fetched from Active Directory'
+        }),
         ('Permissions', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
             'classes': ('collapse',)
@@ -80,9 +88,10 @@ class EmployeeAdmin(BaseUserAdmin):
     )
     
     add_fieldsets = (
-        (None, {
+        ('Database Link to AD (Required)', {
             'classes': ('wide',),
-            'fields': ('username', 'sAMAccountName', 'password1', 'password2'),
+            'fields': ('username', 'sAMAccountName'),
+            'description': 'sAMAccountName must match the Active Directory login. Authentication uses AD credentials.'
         }),
         ('Personal Information (English)', {
             'classes': ('wide',),
@@ -100,11 +109,11 @@ class EmployeeAdmin(BaseUserAdmin):
     
     list_display = ('username', 'sAMAccountName', 'first_name_en', 'last_name_en', 'employee_id', 'department', 'current_ou_display')
     list_filter = ('department', 'is_active', 'is_staff', 'is_superuser', 'date_joined')
-    search_fields = ('username', 'sAMAccountName', 'first_name_en', 'last_name_en', 'email', 'employee_id')
+    search_fields = ('username', 'sAMAccountName', 'first_name_en', 'last_name_en', 'employee_id')
     ordering = ('last_name_en', 'first_name_en')
     actions = ['transfer_ou_action', 'sync_ou_from_ad']
     
-    readonly_fields = ('date_joined', 'last_login')
+    readonly_fields = ('date_joined', 'last_login', 'current_ou_display', 'get_ad_email', 'get_ad_phone', 'get_ad_display_name')
     
     def get_readonly_fields(self, request, obj=None):
         """Make sAMAccountName readonly when editing (but editable when creating)."""
@@ -115,14 +124,50 @@ class EmployeeAdmin(BaseUserAdmin):
     
     def current_ou_display(self, obj):
         """Display the current OU from AD."""
-        ou = ldap_manager.get_user_ou(obj.sAMAccountName)
-        if ou:
-            return format_html(
-                '<span style="background-color: #e7f3ff; padding: 5px 10px; border-radius: 3px;">{}</span>',
-                ou
-            )
-        return format_html('<span style="color: red;">Not found in AD</span>')
-    current_ou_display.short_description = "Current OU (from AD)"
+        try:
+            ou = ldap_manager.get_user_ou(obj.sAMAccountName)
+            if ou:
+                return format_html(
+                    '<span style="background-color: #e7f3ff; padding: 5px 10px; border-radius: 3px; font-weight: bold;">{}</span>',
+                    ou
+                )
+            return format_html('<span style="color: orange;">Not found in OU</span>')
+        except Exception as e:
+            return format_html('<span style="color: red;">Error: {}</span>', str(e)[:50])
+    current_ou_display.short_description = "📍 Current OU (from AD)"
+    
+    def get_ad_email(self, obj):
+        """Get email from AD."""
+        try:
+            user_data = ldap_manager.get_user_by_samaccount(obj.sAMAccountName)
+            if user_data:
+                return user_data.get('mail') or '—'
+            return '—'
+        except Exception:
+            return '—'
+    get_ad_email.short_description = "📧 Email (from AD)"
+    
+    def get_ad_phone(self, obj):
+        """Get phone from AD."""
+        try:
+            user_data = ldap_manager.get_user_by_samaccount(obj.sAMAccountName)
+            if user_data:
+                return user_data.get('telephoneNumber') or '—'
+            return '—'
+        except Exception:
+            return '—'
+    get_ad_phone.short_description = "☎️ Phone (from AD)"
+    
+    def get_ad_display_name(self, obj):
+        """Get display name from AD."""
+        try:
+            user_data = ldap_manager.get_user_by_samaccount(obj.sAMAccountName)
+            if user_data:
+                return user_data.get('displayName') or '—'
+            return '—'
+        except Exception:
+            return '—'
+    get_ad_display_name.short_description = "👤 Display Name (from AD)"
     
     def transfer_ou_action(self, request, queryset):
         """Admin action to transfer employee to different OU."""
