@@ -1,0 +1,22 @@
+# Core framework
+Django>=4.2,<5.0
+djangorestframework
+
+# API auth
+djangorestframework-simplejwt
+
+# Active Directory / LDAP
+ldap3
+
+# Environment & secrets
+python-dotenv
+
+# Filtering & utils
+django-filter
+
+# Production server
+gunicorn
+
+
+mssql-django
+pyodbc
