@@ -19,7 +19,8 @@ cp .env.docker.local.example .env.docker.local
 2. Build and run the app:
 
 ```bash
-docker compose up --build -d
+docker volume create mssql_data
+docker compose up
 ```
 
 3. (Optional) Run AD sync with temporary env vars (no file changes):
