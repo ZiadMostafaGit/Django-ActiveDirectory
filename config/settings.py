@@ -11,6 +11,11 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env files (e.g. .env.docker.local)
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -45,6 +50,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -88,15 +94,15 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     "default": {
-        "ENGINE": "mssql",
-        "NAME": "django_dev",
-        "USER": "sa",
-        "PASSWORD": "Zizoshata2003@",
-        "HOST": "127.0.0.1",
-        "PORT": "1433",
+        "ENGINE": os.getenv("DB_ENGINE", "mssql"),
+        "NAME": os.getenv("DB_NAME", "django_dev"),
+        "USER": os.getenv("DB_USER", "sa"),
+        "PASSWORD": os.getenv("DB_PASSWORD", "Zizoshata2003@"),
+        "HOST": os.getenv("DB_HOST", "127.0.0.1"),
+        "PORT": os.getenv("DB_PORT", "1433"),
         "OPTIONS": {
-            "driver": "ODBC Driver 18 for SQL Server",
-            "extra_params": "Encrypt=yes;TrustServerCertificate=yes;",
+            "driver": os.getenv("DB_DRIVER", "ODBC Driver 18 for SQL Server"),
+            "extra_params": os.getenv("DB_EXTRA_PARAMS", "Encrypt=yes;TrustServerCertificate=yes;"),
         },
     }
 }
@@ -136,6 +142,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

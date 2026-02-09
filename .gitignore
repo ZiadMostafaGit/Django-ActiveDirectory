@@ -1,2 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+ad/
+.venv/
+venv/
+
+# Environment files
+.env
+.env.*
+
+# Docker
+*.log
+docker-compose.override.yml
+
+# Editor
+.vscode/
+*.swp
 .env
 

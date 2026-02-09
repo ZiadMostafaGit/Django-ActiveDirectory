@@ -16,7 +16,8 @@ django-filter
 
 # Production server
 gunicorn
-
+whitenoise
 
 mssql-django
 pyodbc
+requests
