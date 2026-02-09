@@ -1,12 +1,55 @@
+version: "3.9"
+
 services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver-dev
+
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${DB_PASSWORD}"
+      MSSQL_PID: "Developer"
+
+    ports:
+      - "1433:1433"
+
+    volumes:
+      - mssql_data:/var/opt/mssql
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: [
+        "CMD-SHELL",
+        "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"${DB_PASSWORD}\" -C -Q \"SELECT 1\" >/dev/null 2>&1"
+      ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+
   web:
     build: .
     container_name: activedir_web
-    env_file: .env.docker.local
+
+    env_file:
+      - .env.docker.local
+
     environment:
-      DB_HOST: host.docker.internal
+      DB_HOST: mssql
       DB_PORT: 1433
+
     ports:
       - "8000:8000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+
+    depends_on:
+      mssql:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+
+volumes:
+  mssql_data:
+    external: true
