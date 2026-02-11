@@ -129,7 +129,7 @@ class LDAPBackend(ModelBackend):
             search_filter = f"(sAMAccountName={username})"
             
             # First try searching under OU=New, fall back to full base DN
-            search_base = f"OU=New,{actual_base_dn}"
+            search_base = f"OU=Users,{actual_base_dn}"
             logger.debug(f"Searching for user with filter: {search_filter} in {search_base}")
             
             try:
