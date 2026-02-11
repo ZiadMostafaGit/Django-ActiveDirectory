@@ -4,7 +4,8 @@ LDAP/Active Directory utilities for managing OU transfers and user operations.
 
 import logging
 from typing import Optional, Dict, List, Tuple
-from ldap3 import Server, Connection, ALL, SIMPLE
+from ldap3 import Server, Connection, ALL, SIMPLE, NTLM
+from ldap3.core.exceptions import LDAPCursorAttributeError
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -56,12 +57,28 @@ class LDAPManager:
                 get_info=ALL
             )
             
-            # Try to bind with admin credentials or anonymous bind
-            connection = Connection(
-                server,
-                authentication=SIMPLE,
-                raise_exceptions=True
-            )
+            # Get admin credentials from settings
+            ad_admin_user = getattr(settings, 'AD_ADMIN_USER', None)
+            ad_admin_password = getattr(settings, 'AD_ADMIN_PASSWORD', None)
+
+            if not ad_admin_user or not ad_admin_password:
+                # Fallback to anonymous bind if no admin credentials (might fail on some ADs)
+                logger.warning("No AD_ADMIN_USER/PASSWORD configured. Attempting anonymous bind.")
+                connection = Connection(
+                    server,
+                    authentication=SIMPLE,
+                    raise_exceptions=True
+                )
+            else:
+                # Bind with admin credentials
+                connection = Connection(
+                    server,
+                    user=ad_admin_user,
+                    password=ad_admin_password,
+                    authentication=SIMPLE,
+                    raise_exceptions=True
+                )
+            
             connection.bind()
             return connection
             
@@ -84,30 +101,64 @@ class LDAPManager:
                 return None
             
             search_filter = f"(sAMAccountName={sAMAccountName})"
-            search_base = f"OU=New,{self.ad_base_dn}"
             
-            logger.debug(f"Searching for user: {sAMAccountName}")
-            connection.search(
-                search_base=search_base,
-                search_filter=search_filter,
-                attributes=['*']
-            )
+            # Auto-detect Base DN from rootDSE if possible
+            actual_base_dn = self.ad_base_dn
+            if connection.server and connection.server.info and connection.server.info.other:
+                contexts = connection.server.info.other.get('defaultNamingContext')
+                if contexts:
+                    actual_base_dn = contexts[0]
+
+            # List of containers to search in order of priority
+            search_bases = [
+                f"OU=New,{actual_base_dn}",
+                f"CN=Users,{actual_base_dn}",
+                f"CN=Administrators,{actual_base_dn}",
+                actual_base_dn  # Fallback to root
+            ]
             
-            if not connection.entries:
-                logger.warning(f"User {sAMAccountName} not found in AD")
+            found_entry = None
+            final_search_base = None
+
+            for base in search_bases:
+                try:
+                    logger.debug(f"Searching for user {sAMAccountName} in {base}")
+                    connection.search(
+                        search_base=base,
+                        search_filter=search_filter,
+                        attributes=['*']
+                    )
+                    if connection.entries:
+                        found_entry = connection.entries[0]
+                        final_search_base = base
+                        break
+                except Exception as e:
+                    logger.debug(f"Search failed in {base}: {str(e)}")
+                    continue
+            
+            if not found_entry:
+                logger.warning(f"User {sAMAccountName} not found in any AD container")
                 connection.unbind()
                 return None
             
-            # Extract user attributes
-            user_entry = connection.entries[0]
+            # Extract user attributes safely
+            user_entry = found_entry
+            
+            def get_attr(entry, name, default=None):
+                try:
+                    attr = getattr(entry, name)
+                    return str(attr) if attr else default
+                except (LDAPCursorAttributeError, AttributeError):
+                    return default
+
             user_data = {
-                'sAMAccountName': str(user_entry.sAMAccountName) if user_entry.sAMAccountName else None,
-                'displayName': str(user_entry.displayName) if user_entry.displayName else None,
-                'mail': str(user_entry.mail) if user_entry.mail else None,
-                'telephoneNumber': str(user_entry.telephoneNumber) if user_entry.telephoneNumber else None,
-                'title': str(user_entry.title) if user_entry.title else None,
-                'department': str(user_entry.department) if user_entry.department else None,
-                'distinguishedName': str(user_entry.distinguishedName),
+                'sAMAccountName': get_attr(user_entry, 'sAMAccountName'),
+                'displayName': get_attr(user_entry, 'displayName'),
+                'distinguishedName': get_attr(user_entry, 'distinguishedName', ''),
+                'mail': get_attr(user_entry, 'mail'),
+                'telephoneNumber': get_attr(user_entry, 'telephoneNumber'),
+                'department': get_attr(user_entry, 'department'),
+                'title': get_attr(user_entry, 'title'),
             }
             
             # Extract OU from distinguished name
@@ -186,6 +237,118 @@ class LDAPManager:
         except Exception as e:
             logger.error(f"Error in transfer_user_ou: {str(e)}", exc_info=True)
             return False, str(e)
+
+    def update_user_attributes(self, sAMAccountName: str, attributes: Dict[str, str]) -> Tuple[bool, str]:
+        """Update user attributes in Active Directory.
+        
+        Args:
+            sAMAccountName: Windows login username
+            attributes: Dictionary of attributes to update (e.g., {'mail': 'new@mail.com'})
+            
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            # Mapping from local field names to AD attribute names if needed
+            # Currently we assume the keys in 'attributes' match AD attribute names
+            
+            user_data = self.get_user_by_samaccount(sAMAccountName)
+            if not user_data:
+                return False, f"User '{sAMAccountName}' not found in AD"
+            
+            dn = user_data['distinguishedName']
+            
+            connection = self._get_connection()
+            if not connection:
+                return False, "Failed to connect to AD server"
+            
+            # Prepare modifications
+            from ldap3 import MODIFY_REPLACE
+            changes = {}
+            for attr, value in attributes.items():
+                changes[attr] = [(MODIFY_REPLACE, [value])]
+            
+            logger.info(f"Updating AD attributes for {sAMAccountName} ({dn}): {attributes}")
+            
+            connection.modify(dn, changes)
+            
+            if connection.result['result'] == 0:
+                connection.unbind()
+                return True, "Successfully updated AD attributes"
+            else:
+                error_msg = connection.result.get('message', 'Unknown error')
+                connection.unbind()
+                logger.error(f"Failed to update AD attributes: {error_msg}")
+                return False, error_msg
+                
+        except Exception as e:
+            logger.error(f"Error updating AD attributes: {str(e)}", exc_info=True)
+            return False, str(e)
+
+    def sync_users_from_container(self, container_path: str) -> List[Dict]:
+        """Fetch all users from a specific AD container/OU.
+        
+        Args:
+            container_path: Full DN or partial DN (e.g., 'CN=Users')
+            
+        Returns:
+            List of user attribute dictionaries
+        """
+        try:
+            connection = self._get_connection()
+            if not connection:
+                return []
+            
+            actual_base_dn = self.ad_base_dn
+            if connection.server and connection.server.info and connection.server.info.other:
+                contexts = connection.server.info.other.get('defaultNamingContext')
+                if contexts:
+                    actual_base_dn = contexts[0]
+            
+            # Build full search base if path is partial
+            if ',' not in container_path:
+                search_base = f"{container_path},{actual_base_dn}"
+            else:
+                search_base = container_path
+            
+            logger.info(f"Syncing users from container: {search_base}")
+            
+            connection.search(
+                search_base=search_base,
+                search_filter='(&(objectClass=user)(sAMAccountName=*))',
+                attributes=['*']
+            )
+            
+            users = []
+            for entry in connection.entries:
+                # Reuse attribute extraction logic if possible, or implement here
+                def get_attr(entry, name, default=None):
+                    try:
+                        attr = getattr(entry, name)
+                        return str(attr) if attr else default
+                    except (LDAPCursorAttributeError, AttributeError):
+                        return default
+
+                data = {
+                    'sAMAccountName': get_attr(entry, 'sAMAccountName'),
+                    'displayName': get_attr(entry, 'displayName'),
+                    'distinguishedName': get_attr(entry, 'distinguishedName', ''),
+                    'mail': get_attr(entry, 'mail'),
+                    'telephoneNumber': get_attr(entry, 'telephoneNumber'),
+                    'department': get_attr(entry, 'department'),
+                    'title': get_attr(entry, 'title'),
+                }
+                
+                # Filter out system accounts (ending with $)
+                if data['sAMAccountName'] and not data['sAMAccountName'].endswith('$'):
+                    users.append(data)
+            
+            connection.unbind()
+            return users
+            
+        except Exception as e:
+            logger.error(f"Error syncing users from container: {str(e)}", exc_info=True)
+            return []
     
     def get_user_ou(self, sAMAccountName: str) -> Optional[str]:
         """Get the current OU of a user.

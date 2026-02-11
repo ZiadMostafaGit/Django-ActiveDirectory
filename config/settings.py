@@ -169,11 +169,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-AD_SERVER = os.getenv('AD_SERVER', '127.0.0.1')  # Active Directory server IP or hostname
+AD_SERVER = os.getenv('AD_SERVER', '192.168.1.208')  # Active Directory server IP or hostname
 AD_PORT = int(os.getenv('AD_PORT', '389'))  # LDAP port (389 for standard, 636 for LDAPS)
 AD_USE_SSL = os.getenv('AD_USE_SSL', 'False').lower() == 'true'  # Use LDAPS (SSL)
-AD_BASE_DN = os.getenv('AD_BASE_DN', 'DC=eissa,DC=local')  # Base Distinguished Name
-AD_DOMAIN = os.getenv('AD_DOMAIN', 'eissa.local')  # Domain name for UPN construction
+AD_BASE_DN = os.getenv('AD_BASE_DN', 'DC=ad,DC=worex,DC=com')  # Base Distinguished Name
+AD_DOMAIN = os.getenv('AD_DOMAIN', 'ad.worex.com')  # Domain name for UPN construction
+
+# Admin credentials for LDAP operations (searching, OU transfer)
+AD_ADMIN_USER = os.getenv('AD_ADMIN_USER')
+AD_ADMIN_PASSWORD = os.getenv('AD_ADMIN_PASSWORD')
 
 
 # REST Framework Configuration

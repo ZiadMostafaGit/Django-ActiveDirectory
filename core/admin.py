@@ -107,11 +107,11 @@ class EmployeeAdmin(BaseUserAdmin):
         }),
     )
     
-    list_display = ('username', 'sAMAccountName', 'first_name_en', 'last_name_en', 'employee_id', 'department', 'current_ou_display')
+    list_display = ('username', 'sAMAccountName', 'first_name_en', 'last_name_en', 'employee_id', 'department', 'current_ou_display', 'is_active')
     list_filter = ('department', 'is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'sAMAccountName', 'first_name_en', 'last_name_en', 'employee_id')
     ordering = ('last_name_en', 'first_name_en')
-    actions = ['transfer_ou_action', 'sync_ou_from_ad']
+    actions = ['transfer_ou_action', 'sync_details_from_ad_action', 'import_users_from_containers_action']
     
     readonly_fields = ('date_joined', 'last_login', 'current_ou_display', 'get_ad_email', 'get_ad_phone', 'get_ad_display_name')
     
@@ -120,7 +120,32 @@ class EmployeeAdmin(BaseUserAdmin):
         readonly = list(self.readonly_fields)
         if obj is not None:  # Editing existing object
             readonly.append('sAMAccountName')
+            readonly.append('username')
         return readonly
+
+    def save_model(self, request, obj, form, change):
+        """Override save_model to update AD attributes when changed in Admin."""
+        if change:  # Only for updates, not creation
+            ad_attrs = {}
+            if 'first_name_en' in form.changed_data or 'last_name_en' in form.changed_data:
+                ad_attrs['givenName'] = obj.first_name_en
+                ad_attrs['sn'] = obj.last_name_en
+                ad_attrs['displayName'] = f"{obj.first_name_en} {obj.last_name_en}"
+            
+            if 'job_title' in form.changed_data:
+                ad_attrs['title'] = obj.job_title
+            
+            if 'department' in form.changed_data:
+                ad_attrs['department'] = obj.department
+
+            if ad_attrs:
+                success, message = ldap_manager.update_user_attributes(obj.sAMAccountName, ad_attrs)
+                if success:
+                    self.message_user(request, f"Successfully updated AD attributes for {obj.sAMAccountName}")
+                else:
+                    self.message_user(request, f"Failed to update AD: {message}", level='ERROR')
+        
+        super().save_model(request, obj, form, change)
     
     def current_ou_display(self, obj):
         """Display the current OU from AD."""
@@ -217,15 +242,57 @@ class EmployeeAdmin(BaseUserAdmin):
             })
     transfer_ou_action.short_description = "Transfer selected employees to different OU"
     
-    def sync_ou_from_ad(self, request, queryset):
-        """Admin action to sync OU information from AD."""
+    def sync_details_from_ad_action(self, request, queryset):
+        """Admin action to sync all information from AD for selected users."""
         synced = 0
+        failed = 0
         for employee in queryset:
-            ou = ldap_manager.get_user_ou(employee.sAMAccountName)
-            if ou:
+            user_data = ldap_manager.get_user_by_samaccount(employee.sAMAccountName)
+            if user_data:
+                employee.first_name_en = user_data.get('givenName') or user_data.get('displayName', '').split(' ')[0]
+                employee.last_name_en = user_data.get('sn') or ' '.join(user_data.get('displayName', '').split(' ')[1:])
+                employee.job_title = user_data.get('title') or ''
+                employee.department = user_data.get('department') or ''
+                employee.email = user_data.get('mail') or ''
+                employee.save()
                 synced += 1
+            else:
+                failed += 1
         
-        self.message_user(request, f"Synced OU information for {synced} employee(s)")
-    sync_ou_from_ad.short_description = "Sync OU information from Active Directory"
+        self.message_user(request, f"Successfully synced {synced} employee(s) from AD. {failed} not found in AD.")
+    sync_details_from_ad_action.short_description = "Sync all details from Active Directory"
+
+    def import_users_from_containers_action(self, request, queryset=None):
+        """Admin action (can be called without selection) to import new users from common containers."""
+        containers = ['CN=Users', 'OU=New']
+        total_created = 0
+        
+        for container in containers:
+            ad_users = ldap_manager.sync_users_from_container(container)
+            for ad_user in ad_users:
+                sam = ad_user['sAMAccountName']
+                if not sam: continue
+                
+                employee, created = Employee.objects.get_or_create(
+                    sAMAccountName=sam,
+                    defaults={
+                        'username': sam,
+                        'first_name_en': ad_user.get('displayName', '').split(' ')[0],
+                        'last_name_en': ' '.join(ad_user.get('displayName', '').split(' ')[1:]),
+                        'email': ad_user.get('mail') or '',
+                        'job_title': ad_user.get('title') or '',
+                        'department': ad_user.get('department') or '',
+                        'employee_id': f"AD-{sam}",
+                        'national_id': f"AD-{sam}",
+                    }
+                )
+                if created:
+                    total_created += 1
+        
+        if total_created > 0:
+            self.message_user(request, f"Successfully imported {total_created} new users from AD containers.")
+        else:
+            self.message_user(request, "No new users found to import.")
+    import_users_from_containers_action.short_description = "Import new users from AD (Users & New containers)"
 
 
