@@ -161,9 +161,15 @@ class LDAPManager:
                 'title': get_attr(user_entry, 'title'),
             }
             
-            # Extract OU from distinguished name
+            # Extract OU/Container from distinguished name
             dn = user_data['distinguishedName']
-            ou_parts = [part for part in dn.split(',') if part.strip().startswith('OU=')]
+            all_parts = [part.strip() for part in dn.split(',')]
+            ou_parts = []
+            for i, part in enumerate(all_parts):
+                if i == 0: continue
+                if part.startswith('OU=') or part.startswith('CN='):
+                    ou_parts.append(part)
+            
             user_data['organizational_unit'] = ','.join(ou_parts) if ou_parts else None
             
             connection.unbind()
@@ -339,6 +345,16 @@ class LDAPManager:
                     'department': get_attr(entry, 'department'),
                     'title': get_attr(entry, 'title'),
                 }
+                
+                # Extract OU/Container from distinguished name
+                dn = data['distinguishedName']
+                all_parts = [part.strip() for part in dn.split(',')]
+                ou_parts = []
+                for i, part in enumerate(all_parts):
+                    if i == 0: continue
+                    if part.startswith('OU=') or part.startswith('CN='):
+                        ou_parts.append(part)
+                data['organizational_unit'] = ','.join(ou_parts) if ou_parts else None
                 
                 # Filter out system accounts (ending with $)
                 if data['sAMAccountName'] and not data['sAMAccountName'].endswith('$'):

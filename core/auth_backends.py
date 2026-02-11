@@ -199,9 +199,18 @@ class LDAPBackend(ModelBackend):
             attributes['department'] = get_attr(user_entry, 'department')
             attributes['title'] = get_attr(user_entry, 'title')
             
-            # Extract Organizational Unit from distinguished name
+            # Extract Organizational Unit/Container from distinguished name
             dn = attributes['distinguishedName']
-            ou_parts = [part for part in dn.split(',') if part.strip().startswith('OU=')]
+            all_parts = [part.strip() for part in dn.split(',')]
+            ou_parts = []
+            for i, part in enumerate(all_parts):
+                # Skip the first part (it's the common name/sAMAccountName)
+                if i == 0:
+                    continue
+                # Keep parts starting with OU= or CN= (standard containers)
+                if part.startswith('OU=') or part.startswith('CN='):
+                    ou_parts.append(part)
+            
             attributes['organizational_unit'] = ','.join(ou_parts) if ou_parts else None
 
             logger.debug(f"Extracted attributes: {list(attributes.keys())}")
