@@ -23,5 +23,9 @@ for i in {1..30}; do
   fi
 done
 
+# Run AD user sync on startup
+echo "Synchronizing users from Active Directory..."
+python manage.py sync_ad_users --update || echo "AD Sync failed (moving on...)"
+
 echo "Starting Gunicorn server on 0.0.0.0:8000"
 exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120

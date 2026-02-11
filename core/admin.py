@@ -111,7 +111,7 @@ class EmployeeAdmin(BaseUserAdmin):
     list_filter = ('department', 'is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'sAMAccountName', 'first_name_en', 'last_name_en', 'employee_id')
     ordering = ('last_name_en', 'first_name_en')
-    actions = ['transfer_ou_action', 'sync_details_from_ad_action', 'import_users_from_containers_action']
+    actions = ['transfer_ou_action', 'sync_details_from_ad_action', 'import_users_from_containers_action', 'full_sync_from_root_action']
     
     readonly_fields = ('date_joined', 'last_login', 'current_ou_display', 'get_ad_email', 'get_ad_phone', 'get_ad_display_name')
     
@@ -294,5 +294,40 @@ class EmployeeAdmin(BaseUserAdmin):
         else:
             self.message_user(request, "No new users found to import.")
     import_users_from_containers_action.short_description = "Import new users from AD (Users & New containers)"
+
+    def full_sync_from_root_action(self, request, queryset=None):
+        """Admin action to perform a deep search from the root base DN."""
+        from django.conf import settings
+        root_dn = getattr(settings, 'AD_BASE_DN', '')
+        
+        if not root_dn:
+             self.message_user(request, "AD_BASE_DN not configured in settings", level='ERROR')
+             return
+
+        ad_users = ldap_manager.sync_users_from_container(root_dn)
+        total_created = 0
+        
+        for ad_user in ad_users:
+            sam = ad_user['sAMAccountName']
+            if not sam: continue
+            
+            employee, created = Employee.objects.get_or_create(
+                sAMAccountName=sam,
+                defaults={
+                    'username': sam,
+                    'first_name_en': ad_user.get('displayName', '').split(' ')[0],
+                    'last_name_en': ' '.join(ad_user.get('displayName', '').split(' ')[1:]),
+                    'email': ad_user.get('mail') or '',
+                    'job_title': ad_user.get('title') or '',
+                    'department': ad_user.get('department') or '',
+                    'employee_id': f"AD-{sam}",
+                    'national_id': f"AD-{sam}",
+                }
+            )
+            if created:
+                total_created += 1
+        
+        self.message_user(request, f"Full root sync completed. Found {len(ad_users)} users, imported {total_created} new ones.")
+    full_sync_from_root_action.short_description = "🚨 Force Full Sync from AD (Root)"
 
 

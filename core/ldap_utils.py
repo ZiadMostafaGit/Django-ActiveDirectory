@@ -4,7 +4,7 @@ LDAP/Active Directory utilities for managing OU transfers and user operations.
 
 import logging
 from typing import Optional, Dict, List, Tuple
-from ldap3 import Server, Connection, ALL, SIMPLE, NTLM
+from ldap3 import Server, Connection, ALL, SIMPLE, NTLM, SUBTREE, MODIFY_REPLACE
 from ldap3.core.exceptions import LDAPCursorAttributeError
 from django.conf import settings
 
@@ -316,7 +316,8 @@ class LDAPManager:
             connection.search(
                 search_base=search_base,
                 search_filter='(&(objectClass=user)(sAMAccountName=*))',
-                attributes=['*']
+                attributes=['*'],
+                search_scope=SUBTREE
             )
             
             users = []
