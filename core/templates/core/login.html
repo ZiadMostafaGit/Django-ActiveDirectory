@@ -1,0 +1,68 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Login | AD Sync Portal{% endblock %}
+
+{% block content %}
+<div class="glass-card">
+    <h2 style="margin-bottom: 0.5rem; text-align: center; font-size: 1.5rem;">Welcome Back</h2>
+    <p style="margin-bottom: 2rem; text-align: center; color: #64748b; font-size: 0.875rem;">Login with your Active
+        Directory credentials</p>
+
+    <form id="login-form">
+        {% csrf_token %}
+        <div class="input-group">
+            <label for="username">sAMAccountName</label>
+            <input type="text" id="username" name="username" placeholder="e.g. Administrator" required>
+        </div>
+        <div class="input-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn" style="width: 100%;">Sign In</button>
+    </form>
+
+    <div id="error-msg"></div>
+</div>
+
+<script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errorMsg = document.getElementById('error-msg');
+        errorMsg.style.display = 'none';
+
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        try {
+            const response = await fetch('/api/auth/login/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ sAMAccountName: username, password: password })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                localStorage.setItem('access_token', data.access);
+                localStorage.setItem('refresh_token', data.refresh);
+                window.location.href = '/profile/';
+            } else {
+                errorMsg.innerText = data.error || 'Login failed. Please check your credentials.';
+                errorMsg.style.display = 'block';
+            }
+        } catch (error) {
+            errorMsg.innerText = 'Something went wrong. Please try again later.';
+            errorMsg.style.display = 'block';
+        }
+    });
+
+    // If already logged in, redirect to profile
+    if (localStorage.getItem('access_token')) {
+        window.location.href = '/profile/';
+    }
+</script>
+{% endblock %}

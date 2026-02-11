@@ -1,0 +1,97 @@
+{% extends 'core/base.html' %}
+
+{% block title %}My Profile | AD Sync Portal{% endblock %}
+
+{% block content %}
+<div class="glass-card" style="max-width: 800px;">
+    <div id="profile-content">
+        <div style="text-align: center; padding: 2rem;">
+            <p>Loading profile details...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const token = localStorage.getItem('access_token');
+        const profileContent = document.getElementById('profile-content');
+
+        if (!token) {
+            window.location.href = '/';
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/employee/profile/', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.status === 401) {
+                localStorage.removeItem('access_token');
+                window.location.href = '/';
+                return;
+            }
+
+            const data = await response.json();
+            const ad = data.ad_data || {};
+
+            profileContent.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 2rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 1.5rem; margin-bottom: 2rem;">
+                <div style="width: 80px; height: 80px; background: var(--secondary); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 2rem; font-weight: 700;">
+                    ${data.first_name_en ? data.first_name_en[0] : 'U'}
+                </div>
+                <div>
+                  <h2 style="font-size: 1.75rem;">${data.first_name_en} ${data.last_name_en}</h2>
+                  <p style="color: #64748b;">${data.job_title || 'Employee'}</p>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                <div>
+                    <h3 style="font-size: 1rem; color: #64748b; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em;">Personal Information</h3>
+                    <div style="margin-bottom: 1rem;">
+                        <span style="display: block; font-size: 0.75rem; color: #94a3b8;">Full Name</span>
+                        <span style="font-weight: 500;">${data.first_name_en} ${data.last_name_en}</span>
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <span style="display: block; font-size: 0.75rem; color: #94a3b8;">Email Address</span>
+                        <span style="font-weight: 500;">${data.email || 'N/A'}</span>
+                    </div>
+                </div>
+                <div>
+                    <h3 style="font-size: 1rem; color: #64748b; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em;">Work Information</h3>
+                    <div style="margin-bottom: 1rem;">
+                        <span style="display: block; font-size: 0.75rem; color: #94a3b8;">Department</span>
+                        <span style="font-weight: 500;">${data.department || 'N/A'}</span>
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <span style="display: block; font-size: 0.75rem; color: #94a3b8;">Location</span>
+                        <span style="font-weight: 500; color: var(--secondary); background: #eff6ff; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.875rem;">${data.current_ou || 'Internal'}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e2e8f0;">
+                <h3 style="font-size: 1rem; color: #64748b; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em;">Active Directory Data</h3>
+                <div style="background: #f1f5f9; padding: 1.5rem; border-radius: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div>
+                        <span style="display: block; font-size: 0.75rem; color: #94a3b8;">AD Display Name</span>
+                        <span style="font-weight: 500;">${ad.display_name || 'N/A'}</span>
+                    </div>
+                    <div>
+                        <span style="display: block; font-size: 0.75rem; color: #94a3b8;">AD Phone</span>
+                        <span style="font-weight: 500;">${ad.phone || 'N/A'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        } catch (error) {
+            profileContent.innerHTML = `<p style="color: var(--error); text-align: center;">Failed to load profile. Please try again.</p>`;
+        }
+    });
+</script>
+{% endblock %}

@@ -7,6 +7,10 @@ router.register(r'employees', views.EmployeeViewSet, basename='employee')
 router.register(r'audit-logs', views.OUTransferAuditLogViewSet, basename='auditlog')
 
 urlpatterns = [
+    # Frontend pages
+    path('', views.login_page, name='login'),
+    path('profile/', views.profile_page, name='profile'),
+
     # API endpoints
     path('api/auth/login/', views.login_view, name='api_login'),
     path('api/employee/profile/', views.profile_view, name='api_profile'),

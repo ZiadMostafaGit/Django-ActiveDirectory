@@ -10,6 +10,20 @@ from .serializers import EmployeeSerializer, EmployeeProfileSerializer, OUTransf
 from .ldap_utils import ldap_manager
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def login_page(request):
+    """Render the login page template"""
+    return render(request, 'core/login.html')
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def profile_page(request):
+    """Render the profile page template"""
+    return render(request, 'core/profile.html')
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
